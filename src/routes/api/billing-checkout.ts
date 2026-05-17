@@ -9,6 +9,7 @@ import {
 } from '@/server/api';
 import { billing } from '@/server/billingClient';
 import { env } from '@/server/env';
+import { hasBillingCredentials, legacyFunction } from '@/server/legacyFunction';
 
 const appUrl = () => env('ADAM_URL') || 'https://adam.new/app';
 const MAX_TRIAL_PERIOD_DAYS = 7;
@@ -20,6 +21,9 @@ export const Route = createFileRoute('/api/billing-checkout')({
       OPTIONS: preflight,
       POST: async ({ request }) => {
         try {
+          if (!hasBillingCredentials()) {
+            return legacyFunction('billing-checkout', request);
+          }
           const user = await requireUser(request);
           const body = await request.json().catch(() => null);
           if (!isRecord(body) || typeof body.priceId !== 'string') {
