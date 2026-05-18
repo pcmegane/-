@@ -2,7 +2,8 @@ import { createRootRoute, HeadContent, Scripts } from '@tanstack/react-router';
 import App from '@/App';
 import '@/index.css';
 
-const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path}`;
+const assetUrl = (path: string) =>
+  `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}${path.replace(/^\//, '')}`;
 
 export const Route = createRootRoute({
   component: RootComponent,
