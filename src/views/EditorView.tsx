@@ -624,7 +624,7 @@ function ConversationEditor() {
       mobilePreviewSlot={
         <div className="flex h-full w-full items-center justify-center bg-adam-bg-secondary-dark">
           {isChatStreaming ? (
-            <Loader message="Generating model" />
+            <Loader showLoadingText />
           ) : activePreview?.type === 'artifact' ? (
             <OpenSCADPreview
               scadCode={activePreview.artifact.code}
