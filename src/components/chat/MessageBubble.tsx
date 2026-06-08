@@ -28,7 +28,10 @@ import { previewScadColoredViaToolWorker } from '@/worker/toolWorker';
 import type { ChatMessage } from '@/lib/aiMessages';
 import type { ParametricArtifact } from '@shared/types';
 import type { TreeNode } from '@shared/Tree';
-import { isParametricArtifact } from '@shared/parametricParts';
+import {
+  cleanAssistantText,
+  isParametricArtifact,
+} from '@shared/parametricParts';
 import { imageIdFromFilename } from '@shared/imageRefs';
 import type React from 'react';
 import {
@@ -73,6 +76,31 @@ export function MessageBubble(props: MessageBubbleProps) {
   ) : (
     <AssistantBubble {...props} />
   );
+}
+
+function isRecord(value: unknown): value is Record<PropertyKey, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getStringField(value: unknown, key: string): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const field = value[key];
+  return typeof field === 'string' ? field : undefined;
+}
+
+function answerUserMessageText(
+  part: ChatMessage['parts'][number],
+): string | undefined {
+  if (part.type !== 'tool-answer_user') return undefined;
+
+  const message =
+    part.state === 'output-available'
+      ? part.output.message
+      : part.state === 'input-streaming' || part.state === 'input-available'
+        ? getStringField(part.input, 'message')
+        : undefined;
+  const cleaned = message ? cleanAssistantText(message).trim() : '';
+  return cleaned || undefined;
 }
 
 /**
@@ -410,8 +438,17 @@ function AssistantBubble({
     () =>
       message.parts
         .filter((p) => p.type === 'text')
-        .map((p) => p.text)
+        .map((p) => cleanAssistantText(p.text))
         .join(''),
+    [message.parts],
+  );
+  const answerText = useMemo(
+    () => message.parts.map(answerUserMessageText).filter(Boolean).join(''),
+    [message.parts],
+  );
+  const copyText = answerText || text;
+  const hasAnswerUserMessage = useMemo(
+    () => message.parts.some((part) => !!answerUserMessageText(part)?.trim()),
     [message.parts],
   );
   const branchIndex = message.siblings.findIndex((b) => b.id === message.id);
@@ -435,8 +472,8 @@ function AssistantBubble({
   };
 
   return (
-    <div className="flex min-w-0 justify-start">
-      <div className="mr-2 mt-1">
+    <div className="flex min-w-0 max-w-full justify-start overflow-hidden">
+      <div className="mr-2 mt-1 shrink-0">
         <Avatar className="h-9 w-9 border border-adam-neutral-700 bg-adam-neutral-950">
           <div style={{ padding: '0.6rem 0.5rem 0.5rem 0.55rem' }}>
             <AvatarImage
@@ -446,16 +483,17 @@ function AssistantBubble({
           </div>
         </Avatar>
       </div>
-      <div className="flex w-[80%] min-w-0 flex-col gap-2">
+      <div className="flex min-w-0 max-w-[calc(100%-3rem)] flex-1 flex-col gap-2">
         {message.parts.map((part, index) => {
           if (part.type === 'text') {
-            if (!part.text) return null;
+            const visibleText = cleanAssistantText(part.text);
+            if (hasAnswerUserMessage || !visibleText) return null;
             return (
               <div
                 key={index}
                 className="chat-markdown min-w-0 max-w-full overflow-hidden rounded-lg bg-adam-neutral-800 px-3 py-2 text-sm text-adam-text-primary"
               >
-                <Streamdown parseIncompleteMarkdown>{part.text}</Streamdown>
+                <Streamdown parseIncompleteMarkdown>{visibleText}</Streamdown>
               </div>
             );
           }
@@ -491,10 +529,8 @@ function AssistantBubble({
             // `part.input` is a partial object during streaming — pull off
             // whatever `code` has arrived so far.
             const partialCode =
-              part.state === 'input-streaming' &&
-              part.input &&
-              typeof (part.input as { code?: unknown }).code === 'string'
-                ? (part.input as { code: string }).code
+              part.state === 'input-streaming'
+                ? (getStringField(part.input, 'code') ?? '')
                 : '';
             if (part.state === 'input-streaming') {
               return (
@@ -567,17 +603,7 @@ function AssistantBubble({
           }
 
           if (part.type === 'tool-answer_user') {
-            if (text) return null;
-            const answerMessage =
-              part.state === 'output-available'
-                ? part.output.message
-                : (part.state === 'input-streaming' ||
-                      part.state === 'input-available') &&
-                    part.input &&
-                    typeof (part.input as { message?: unknown }).message ===
-                      'string'
-                  ? (part.input as { message: string }).message
-                  : '';
+            const answerMessage = answerUserMessageText(part) ?? '';
             if (!answerMessage.trim()) return null;
             return (
               <div
@@ -655,14 +681,14 @@ function AssistantBubble({
               </div>
             )}
 
-            {text && (
+            {copyText && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="outline"
                     size="icon"
                     className="h-6 w-6 rounded-lg p-0"
-                    onClick={() => navigator.clipboard.writeText(text)}
+                    onClick={() => navigator.clipboard.writeText(copyText)}
                     aria-label="Copy"
                   >
                     <Copy className="h-3 w-3 text-adam-neutral-100" />
@@ -875,8 +901,10 @@ function ToolBlock({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="group min-w-0 overflow-hidden rounded-lg border border-adam-neutral-700 bg-adam-neutral-900 text-sm text-adam-text-primary">
-      {previewBody ? <div>{previewBody}</div> : null}
+    <div className="group min-w-0 max-w-full overflow-hidden rounded-lg border border-adam-neutral-700 bg-adam-neutral-900 text-sm text-adam-text-primary">
+      {previewBody ? (
+        <div className="min-w-0 max-w-full overflow-hidden">{previewBody}</div>
+      ) : null}
       <div
         className={cn(
           'flex w-full items-stretch hover:bg-adam-neutral-800',
@@ -918,7 +946,7 @@ function ToolBlock({
         ) : null}
       </div>
       {expanded && children ? (
-        <div className="min-w-0 border-t border-adam-neutral-700">
+        <div className="min-w-0 max-w-full overflow-hidden border-t border-adam-neutral-700">
           {children}
         </div>
       ) : null}
