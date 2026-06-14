@@ -276,8 +276,7 @@ export function PromptView() {
                 isLoaded ? 'opacity-100' : 'opacity-0',
               )}
             >
-              {getTimeBasedGreeting}
-              {firstName ? `, ${firstName}` : ''}!
+              自助具作成支援ツール
             </h1>
           </div>
           <div className="flex w-full flex-col items-center">
@@ -297,7 +296,7 @@ export function PromptView() {
                       return;
                     }
                   }}
-                  placeholder="Start building with Adam..."
+                  placeholder="例：右片麻痺患者用のスプーン把持補助具を設計してください"
                   type={type}
                   disabled={limitReached || isGenerating}
                   model={model}
